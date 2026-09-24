@@ -1,0 +1,11 @@
+# Build output
+backend/contest_tracker
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
