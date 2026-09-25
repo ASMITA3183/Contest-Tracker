@@ -14,6 +14,7 @@ struct Contest
     int solved;
     int totalQuestions;
     int rank;
+    int rating;
 };
 
 #endif

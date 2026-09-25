@@ -46,6 +46,9 @@ std::vector<Contest> LeetCodeParser::parse(
         contest.rank =
             contestData["ranking"].get<int>();
 
+        contest.rating = static_cast<int>(
+            std::round(contestData["rating"].get<double>()));
+
         contests.push_back(contest);
     }
 

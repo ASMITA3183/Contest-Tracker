@@ -1,26 +1,35 @@
-console.log("SCRIPT STARTED");
-
 async function loadContests() {
-  const response = await fetch("http://localhost:8080/contests");
-
-  const contests = await response.json();
-
   const tableBody = document.getElementById("contest-table-body");
 
-  contests.forEach((contest, index) => {
-    const row = document.createElement("tr");
+  try {
+    const response = await fetch("/contests");
 
-    row.innerHTML = `
+    const contests = await response.json();
+
+    contests.forEach((contest, index) => {
+      const row = document.createElement("tr");
+
+      // dateTime is a Unix timestamp in seconds, shown in the browser's time zone
+      const date = new Date(contest.dateTime * 1000).toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+
+      row.innerHTML = `
             <td>${contests.length - index}</td>
-            <td>${contest.dateTime}</td>
+            <td>${date}</td>
             <td>${contest.platform}</td>
             <td>${contest.contestName}</td>
             <td>${contest.solved}/${contest.totalQuestions}</td>
             <td>${contest.rank}</td>
+            <td>${contest.rating}</td>
         `;
 
-    tableBody.appendChild(row);
-  });
+      tableBody.appendChild(row);
+    });
+  } catch (error) {
+    tableBody.innerHTML = `<tr><td colspan="6">Could not load contests: ${error}</td></tr>`;
+  }
 }
 
 loadContests();

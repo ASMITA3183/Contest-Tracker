@@ -1,7 +1,11 @@
 #include "CodeChefParser.h"
+#include "ContestPerformanceFetcher.h"
 
+#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <future>
 #include <iostream>
 #include <string>
 
@@ -45,6 +49,9 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
         start,
         end - start + 1);
 
+    // Contest codes (e.g. "START90D"), same order as contests
+    std::vector<std::string> contestCodes;
+
     try
     {
         json data = json::parse(jsonData);
@@ -60,19 +67,66 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
 
             contest.rank = std::stoi(
                 item.value("rank", "0"));
-
-            // For now, these are not available from all_rating.
-            contest.solved = 0;
-            contest.totalQuestions = 0;
+            
+            contest.rating = std::stoi(
+                item.value("rating", "0"));
 
             contests.push_back(contest);
+            contestCodes.push_back(item.value("code", ""));
         }
     }
     catch (const json::parse_error &e)
     {
         std::cerr << "JSON parsing failed: "
                   << e.what() << '\n';
+
+        return contests;
     }
+
+    // 5. Fetch solved, total questions and date for every contest.
+    // Requests run in parallel, a few at a time, so CodeChef does not block us.
+    const size_t batchSize = 8;
+
+    // Must be called once before curl is used from multiple threads
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    ContestPerformanceFetcher fetcher;
+
+    for (size_t batchStart = 0; batchStart < contests.size(); batchStart += batchSize)
+    {
+        size_t batchEnd = std::min(
+            batchStart + batchSize,
+            contests.size());
+
+        std::vector<std::future<ContestStats>> results;
+
+        for (size_t i = batchStart; i < batchEnd; i++)
+        {
+            std::string code = contestCodes[i];
+            std::string name = contests[i].contestName;
+
+            results.push_back(std::async(
+                std::launch::async,
+                [&fetcher, &response, code, name]()
+                {
+                    return fetcher.getContestStats(
+                        code,
+                        name,
+                        response);
+                }));
+        }
+
+        for (size_t i = batchStart; i < batchEnd; i++)
+        {
+            ContestStats stats = results[i - batchStart].get();
+
+            contests[i].solved = stats.solved;
+            contests[i].totalQuestions = stats.totalQuestions;
+            contests[i].dateTime = stats.dateTime;
+        }
+    }
+
+    curl_global_cleanup();
 
     return contests;
 }

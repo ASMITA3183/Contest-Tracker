@@ -8,4 +8,5 @@ backend/contest_tracker
 .vscode/
 
 # Logs
-*.log
+*.logbackend/codechef_test
+backend/contest_test

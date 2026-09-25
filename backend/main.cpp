@@ -1,179 +1,147 @@
-#include <curl/curl.h>
+#include "CodeChefParser.h"
+#include "CodeChefProvider.h"
+#include "CodeforcesParser.h"
+#include "CodeforcesProvider.h"
+#include "LeetCodeParser.h"
+#include "LeetCodeProvider.h"
 
+#include "httplib.h"
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <chrono>
 #include <iostream>
-#include <string>
+#include <vector>
 
-size_t WriteCallback(
-    void *contents,
-    size_t size,
-    size_t nmemb,
-    void *userp)
-{
-    size_t totalSize = size * nmemb;
+using json = nlohmann::json;
 
-    std::string *response =
-        static_cast<std::string *>(userp);
-
-    response->append(
-        static_cast<char *>(contents),
-        totalSize);
-
-    return totalSize;
-}
+const std::string LEETCODE_USERNAME = "asmita3183";
+const std::string CODECHEF_USERNAME = "asmitamhetre20";
+const std::string CODEFORCES_USERNAME = "asmita3183";
 
 int main()
 {
-    CURL *curl = curl_easy_init();
+    std::vector<Contest> contests;
 
-    if (!curl)
+    // 1. LeetCode contests
+    try
     {
-        std::cerr << "Failed to initialize CURL\n";
-        return 1;
+        LeetCodeProvider provider;
+        LeetCodeParser parser;
+
+        std::vector<Contest> leetCodeContests =
+            parser.parse(provider.fetchContestData(LEETCODE_USERNAME));
+
+        contests.insert(
+            contests.end(),
+            leetCodeContests.begin(),
+            leetCodeContests.end());
+
+        std::cout << "LeetCode contests: "
+                  << leetCodeContests.size() << '\n';
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "LeetCode failed: " << e.what() << '\n';
     }
 
-    std::string response;
-
-    curl_easy_setopt(
-        curl,
-        CURLOPT_URL,
-        "https://www.codechef.com/sites/all/themes/abessive/js/contest-problem.js");
-
-    curl_easy_setopt(
-        curl,
-        CURLOPT_WRITEFUNCTION,
-        WriteCallback);
-
-    curl_easy_setopt(
-        curl,
-        CURLOPT_WRITEDATA,
-        &response);
-
-    curl_easy_setopt(
-        curl,
-        CURLOPT_FOLLOWLOCATION,
-        1L);
-
-    CURLcode result = curl_easy_perform(curl);
-
-    if (result != CURLE_OK)
+    // 2. CodeChef contests
+    try
     {
-        std::cerr << "CURL failed: "
-                  << curl_easy_strerror(result)
-                  << '\n';
+        CodeChefProvider provider;
+        CodeChefParser parser;
 
-        curl_easy_cleanup(curl);
-        return 1;
+        std::vector<Contest> codeChefContests =
+            parser.parse(provider.fetchContestData(CODECHEF_USERNAME));
+
+        contests.insert(
+            contests.end(),
+            codeChefContests.begin(),
+            codeChefContests.end());
+
+        std::cout << "CodeChef contests: "
+                  << codeChefContests.size() << '\n';
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "CodeChef failed: " << e.what() << '\n';
     }
 
-    curl_easy_cleanup(curl);
+        // 3. Codeforces contests
+    try
+    {
+        CodeforcesProvider provider;
+        CodeforcesParser parser;
 
-    std::cout << "JS size: "
-              << response.size()
-              << "\n\n";
+        std::vector<Contest> codeforcesContests =
+            parser.parse(
+                provider.fetchRatingHistory(CODEFORCES_USERNAME),
+                provider.fetchSubmissions(CODEFORCES_USERNAME),
+                provider.fetchContestList());
 
-    std::string keywords[] =
+        contests.insert(
+            contests.end(),
+            codeforcesContests.begin(),
+            codeforcesContests.end());
+
+        std::cout << "Codeforces contests: "
+                  << codeforcesContests.size() << '\n';
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Codeforces failed: " << e.what() << '\n';
+    }
+
+    // 3. Newest contest first
+    std::sort(
+        contests.begin(),
+        contests.end(),
+        [](const Contest &a, const Contest &b)
         {
-            "isProblemSolved",
-            "contest",
-            "submission",
-            "ajax",
-            "api",
-            "status",
-            "problem"};
+            return a.dateTime > b.dateTime;
+        });
 
-    for (const std::string &keyword : keywords)
-    {
-        size_t pos = response.find(keyword);
+    httplib::Server server;
 
-        std::cout << "\n=============================\n";
-        std::cout << "Keyword: " << keyword << '\n';
-        std::cout << "Position: " << pos << '\n';
+    // Serve index.html, style.css and script.js from the frontend folder
+    server.set_mount_point("/", "../frontend");
 
-        if (pos != std::string::npos)
-        {
-            size_t start =
-                (pos > 1000) ? pos - 1000 : 0;
+    server.Get("/contests",
+               [&contests](const httplib::Request &req,
+                           httplib::Response &res)
+               {
+                   json result = json::array();
 
-            std::cout << response.substr(
-                             start,
-                             3000)
-                      << '\n';
-        }
-    }
+                   for (const Contest &contest : contests)
+                   {
+                       json item;
+
+                       item["platform"] = contest.platform;
+                       item["contestName"] = contest.contestName;
+
+                       // Unix timestamp in seconds, formatted by the frontend
+                       item["dateTime"] =
+                           std::chrono::duration_cast<std::chrono::seconds>(
+                               contest.dateTime.time_since_epoch())
+                               .count();
+
+                       item["solved"] = contest.solved;
+                       item["totalQuestions"] =
+                           contest.totalQuestions;
+                       item["rank"] = contest.rank;
+                       item["rating"] = contest.rating;
+
+                       result.push_back(item);
+                   }
+
+                   res.set_content(
+                       result.dump(),
+                       "application/json");
+               });
+
+    std::cout << "Server running at http://localhost:8080\n";
+
+    server.listen("0.0.0.0", 8080);
 
     return 0;
 }
-
-// #include "LeetCodeProvider.h"
-// #include "LeetCodeParser.h"
-
-// #include "httplib.h"
-// #include <nlohmann/json.hpp>
-
-// #include <iostream>
-// #include <algorithm>
-
-// using json = nlohmann::json;
-
-// int main()
-// {
-//     LeetCodeProvider provider;
-//     LeetCodeParser parser;
-
-//     std::string response =
-//         provider.fetchContestData("asmita3183");
-
-//     std::vector<Contest> contests =
-//         parser.parse(response);
-
-//     std::sort(
-//         contests.begin(),
-//         contests.end(),
-//         [](const Contest &a, const Contest &b)
-//         {
-//             return a.dateTime > b.dateTime;
-//         });
-
-//     httplib::Server server;
-
-//     server.set_default_headers({{"Access-Control-Allow-Origin", "*"}});
-
-//     server.Get("/contests",
-//                [&contests](const httplib::Request &req,
-//                            httplib::Response &res)
-//                {
-//                    json result = json::array();
-
-//                    for (const Contest &contest : contests)
-//                    {
-//                        json item;
-
-//                        item["platform"] = contest.platform;
-//                        item["contestName"] = contest.contestName;
-
-//                        std::time_t time =
-//                            std::chrono::system_clock::to_time_t(
-//                                contest.dateTime);
-
-//                        item["dateTime"] =
-//                            std::ctime(&time);
-
-//                        item["solved"] = contest.solved;
-//                        item["totalQuestions"] =
-//                            contest.totalQuestions;
-//                        item["rank"] = contest.rank;
-
-//                        result.push_back(item);
-//                    }
-
-//                    res.set_content(
-//                        result.dump(),
-//                        "application/json");
-//                });
-
-//     std::cout << "Server running at http://localhost:8080\n";
-
-//     server.listen("localhost", 8080);
-
-//     return 0;
-// }
