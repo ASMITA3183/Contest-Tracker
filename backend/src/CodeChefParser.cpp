@@ -1,12 +1,12 @@
 #include "CodeChefParser.h"
 #include "ContestPerformanceFetcher.h"
 
-#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <future>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 using json = nlohmann::json;
@@ -15,6 +15,18 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
 {
     std::vector<Contest> contests;
 
+    if (response.empty())
+    {
+        throw std::runtime_error("Could not connect to CodeChef");
+    }
+
+    // Unknown usernames are redirected to the CodeChef home page,
+    // which does not have the profile details block.
+    if (response.find("user-details-container") == std::string::npos)
+    {
+        throw std::runtime_error("User not found");
+    }
+
     // 1. Find the beginning of all_rating
     const std::string marker = "var all_rating =";
 
@@ -22,7 +34,7 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
 
     if (start == std::string::npos)
     {
-        std::cerr << "Could not find all_rating in response\n";
+        // User exists but has no rated contests
         return contests;
     }
 
@@ -67,7 +79,7 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
 
             contest.rank = std::stoi(
                 item.value("rank", "0"));
-            
+
             contest.rating = std::stoi(
                 item.value("rating", "0"));
 
@@ -86,9 +98,6 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
     // 5. Fetch solved, total questions and date for every contest.
     // Requests run in parallel, a few at a time, so CodeChef does not block us.
     const size_t batchSize = 8;
-
-    // Must be called once before curl is used from multiple threads
-    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     ContestPerformanceFetcher fetcher;
 
@@ -125,8 +134,6 @@ std::vector<Contest> CodeChefParser::parse(const std::string &response)
             contests[i].dateTime = stats.dateTime;
         }
     }
-
-    curl_global_cleanup();
 
     return contests;
 }

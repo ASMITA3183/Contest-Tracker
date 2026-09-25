@@ -41,7 +41,7 @@ std::string LeetCodeProvider::fetchContestData(
     std::string query =
         R"({
         "operationName": "userContestRankingInfo",
-        "query": "query userContestRankingInfo($username: String!) { userContestRanking(username: $username) { attendedContestsCount rating globalRanking totalParticipants topPercentage badge { name } } userContestRankingHistory(username: $username) { attended trendDirection problemsSolved totalProblems finishTimeInSeconds rating ranking contest { title startTime } } }",
+        "query": "query userContestRankingInfo($username: String!) { matchedUser(username: $username) { username } userContestRanking(username: $username) { attendedContestsCount rating globalRanking totalParticipants topPercentage badge { name } } userContestRankingHistory(username: $username) { attended trendDirection problemsSolved totalProblems finishTimeInSeconds rating ranking contest { title startTime } } }",
         "variables": {
             "username": ")" +
         username + R"("

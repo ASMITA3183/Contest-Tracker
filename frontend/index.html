@@ -13,7 +13,30 @@
     <div class="container">
       <h1>Contest Tracker</h1>
 
-      <p class="subtitle">My competitive programming contest history</p>
+      <p class="subtitle">
+        Contest history from LeetCode, CodeChef and Codeforces
+      </p>
+
+      <form id="username-form" class="username-form">
+        <label>
+          LeetCode
+          <input type="text" id="leetcode" placeholder="LeetCode username" />
+        </label>
+
+        <label>
+          CodeChef
+          <input type="text" id="codechef" placeholder="CodeChef username" />
+        </label>
+
+        <label>
+          Codeforces
+          <input type="text" id="codeforces" placeholder="Codeforces username" />
+        </label>
+
+        <button type="submit" id="submit-button">Show contests</button>
+      </form>
+
+      <p id="status" class="status"></p>
 
       <table>
         <thead>

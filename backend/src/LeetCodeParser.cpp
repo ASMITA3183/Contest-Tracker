@@ -3,7 +3,9 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <ctime>
+#include <stdexcept>
 
 using json = nlohmann::json;
 
@@ -12,10 +14,46 @@ std::vector<Contest> LeetCodeParser::parse(
 {
     std::vector<Contest> contests;
 
-    json data = json::parse(response);
+    if (response.empty())
+    {
+        throw std::runtime_error("Could not connect to LeetCode");
+    }
+
+    json data = json::parse(response, nullptr, false);
+
+    if (data.is_discarded())
+    {
+        throw std::runtime_error("Unexpected response from LeetCode");
+    }
+
+    // matchedUser is null when the username does not exist
+        // matchedUser is null when the username does not exist
+    if (data["data"]["matchedUser"].is_null())
+    {
+        // LeetCode explains the problem in "errors", e.g. "That user does not exist."
+        std::string message = "Unexpected response from LeetCode";
+
+        if (data.contains("errors") && data["errors"].is_array() && !data["errors"].empty())
+        {
+            message = data["errors"][0].value("message", message);
+        }
+
+        if (message.find("does not exist") != std::string::npos)
+        {
+            message = "User not found";
+        }
+
+        throw std::runtime_error(message);
+    }
 
     const auto &history =
         data["data"]["userContestRankingHistory"];
+
+    // User exists but has not taken part in any contest
+    if (!history.is_array())
+    {
+        return contests;
+    }
 
     for (const auto &contestData : history)
     {

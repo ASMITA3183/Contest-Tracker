@@ -1,7 +1,6 @@
 #include "CodeforcesParser.h"
 #include "CodeforcesProvider.h"
 
-#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -11,6 +10,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -89,13 +89,32 @@ std::vector<Contest> CodeforcesParser::parse(
 {
     std::vector<Contest> contests;
 
-    json ratingHistory =
-        parseApiResponse(ratingResponse, "user.rating");
-
-    if (ratingHistory.is_null())
+    if (ratingResponse.empty())
     {
-        return contests;
+        throw std::runtime_error("Could not connect to Codeforces");
     }
+
+    json ratingData = json::parse(ratingResponse, nullptr, false);
+
+    if (ratingData.is_discarded())
+    {
+        throw std::runtime_error("Unexpected response from Codeforces");
+    }
+
+    if (ratingData.value("status", "") != "OK")
+    {
+        std::string comment = ratingData.value("comment", "");
+
+        // e.g. "handle: User abc not found"
+        if (comment.find("not found") != std::string::npos)
+        {
+            throw std::runtime_error("User not found");
+        }
+
+        throw std::runtime_error(comment);
+    }
+
+    json ratingHistory = ratingData["result"];
 
     // 1. Start time of every contest
     std::map<int, std::time_t> startTimes;
@@ -173,9 +192,6 @@ std::vector<Contest> CodeforcesParser::parse(
     const size_t batchSize = 4;
     const int maxAttempts = 3;
 
-    // Must be called once before curl is used from multiple threads
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-
     CodeforcesProvider provider;
 
     for (size_t batchStart = 0; batchStart < contests.size(); batchStart += batchSize)
@@ -221,8 +237,6 @@ std::vector<Contest> CodeforcesParser::parse(
                 results[i - batchStart].get();
         }
     }
-
-    curl_global_cleanup();
 
     return contests;
 }
